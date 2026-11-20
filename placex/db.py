@@ -156,7 +156,7 @@ def diagnose_connection(dsn: str) -> dict:
     try:
         with transaction() as conn:
             conn.execute("SELECT 1").fetchone()
-            ssl_active = conn.info.ssl_in_use
+            ssl_active = conn.pgconn.ssl_in_use
     except DatabaseUnavailable as error:
         cause = error.__cause__ or error
         return {

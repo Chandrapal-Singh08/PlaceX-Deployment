@@ -34,7 +34,10 @@ def _bool_env(name, default=False):
 
 @dataclass
 class Config:
-    allowed_origins: str = field(default_factory=lambda: _e("PLACEX_ALLOWED_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500"))
+    allowed_origins: str = field(default_factory=lambda: _e(
+        "PLACEX_ALLOWED_ORIGINS",
+        "https://placex-deployment.onrender.com,http://127.0.0.1:5500,http://localhost:5500",
+    ))
     # --- optional LLM enhancements
     llm_provider: str = field(default_factory=lambda: _e("PLACEX_LLM_PROVIDER", "none").lower())
     groq_api_key: str | None = field(default_factory=lambda: os.environ.get("GROQ_API_KEY"))

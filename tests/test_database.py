@@ -117,11 +117,11 @@ def test_database_diagnostics_report_dns_failure_without_sensitive_details(monke
 
 
 def test_database_diagnostics_report_query_and_tls_status(monkeypatch):
-    class ConnectionInfo:
+    class PGconn:
         ssl_in_use = True
 
     class Connection:
-        info = ConnectionInfo()
+        pgconn = PGconn()
 
         def execute(self, query):
             assert query == "SELECT 1"

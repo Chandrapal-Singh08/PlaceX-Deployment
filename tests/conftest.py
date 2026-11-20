@@ -23,6 +23,15 @@ def clean(_database):
     with psycopg.connect(TEST_DSN, autocommit=True) as c:
         c.execute("TRUNCATE users, jobs, activity_logs RESTART IDENTITY CASCADE")
 
+@pytest.fixture(autouse=True)
+def isolate_optional_services(monkeypatch):
+    """Keep normal test runs offline; individual provider tests opt in with mocks."""
+    monkeypatch.setenv("PLACEX_LLM_PROVIDER", "none")
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("PLACEX_EMBEDDINGS_ENABLED", "false")
+    monkeypatch.delenv("PLACEX_JOB_PROVIDER_URL", raising=False)
+    monkeypatch.delenv("PLACEX_JOB_PROVIDER_API_KEY", raising=False)
+
 @pytest.fixture
 def conn():
     with psycopg.connect(TEST_DSN, autocommit=True, row_factory=psycopg.rows.dict_row) as c:

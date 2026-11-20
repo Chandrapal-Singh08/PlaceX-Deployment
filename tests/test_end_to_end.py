@@ -17,6 +17,15 @@ def test_resume_analysis_end_to_end(core, user):
     assert set(res["matched"]) == {"Python", "SQL", "PostgreSQL", "Git", "REST APIs"}
     assert set(res["missing"]) == {"Data Structures", "Docker", "Linux"}
     assert res["ats_score"] == round(100 * 21 / 29, 2)
+    assert (
+        res["matching_report"]["components"]["exact_skill_match"]["score"]
+        == res["ats_score"]
+    )
+    saved_report = core.repo.get_report(res["report_id"])
+    assert (
+        saved_report["matching_details"]["overall_match_score"]
+        == res["matching_report"]["overall_match_score"]
+    )
     assert float(core.repo.dashboard(user["id"])["best_ats"]) == pytest.approx(72.41, abs=0.01)
 
 def test_full_pipeline_all_four_modules(core, user):
@@ -86,6 +95,35 @@ def test_prep_plan_reports_matched_skills_when_no_roadmap_is_needed(core, user):
         "Python", "SQL", "REST APIs", "PostgreSQL",
         "Data Structures", "Git", "Docker", "Linux",
     }
+
+
+def test_prep_plan_can_create_a_new_version_without_losing_old_progress(core, user):
+    _, analysis = analyze(core, user)
+    report_id = analysis["result"]["report_id"]
+    first = core.wait(core.submit(user["id"], "PREP_PLAN", {
+        "report_id": report_id,
+    })["id"])
+    assert first["status"] == "DONE", first.get("error")
+    first_id = first["result"]["roadmap_id"]
+    first_items = first["result"]["items"]
+    assert first_items and first_items[0]["practice_task"]
+    assert first_items[0]["level"] in {"BEGINNER", "INTERMEDIATE", "ADVANCED"}
+    assert first["result"]["learning_sequence"]
+
+    saved = core.repo.list_user_roadmaps(user["id"])
+    completed_item = saved[0]["items"][0]
+    core.repo.set_user_roadmap_item_status(completed_item["id"], user["id"], "DONE")
+
+    regenerated = core.wait(core.submit(user["id"], "PREP_PLAN", {
+        "report_id": report_id,
+        "regenerate": True,
+    })["id"])
+    assert regenerated["status"] == "DONE", regenerated.get("error")
+    assert regenerated["result"]["roadmap_id"] != first_id
+    roadmaps = core.repo.list_user_roadmaps(user["id"])
+    assert len(roadmaps) == 2
+    old = next(item for item in roadmaps if item["id"] == first_id)
+    assert old["completed_items"] == 1
 
 def test_resume_build_from_uploaded_jd_creates_both_formats(core, user):
     from pathlib import Path

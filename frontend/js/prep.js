@@ -56,6 +56,17 @@
     return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString();
   }
 
+  function safeLink(value) {
+    try {
+      const url = new URL(value);
+      return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password
+        ? url.href
+        : "";
+    } catch {
+      return "";
+    }
+  }
+
   function progressMarkup(roadmap) {
     const total = roadmap.items.length;
     const completed = Number(roadmap.completed_items || 0);
@@ -134,15 +145,47 @@
     const remainingHours = Number(roadmap.remaining_hours || 0);
     const percent = Number(roadmap.completion_pct || 0);
     const matchedSkills = roadmap.matched_skills || [];
+    const fromJourneyGuide = Boolean(roadmap.source_guide_id);
     const result = $("result");
     result.hidden = false;
+    const guidance = roadmap.ai_guidance;
+    const externalResearch = roadmap.external_research || {};
+    const learningSequence = [...items].sort((a, b) => {
+      const levels = { BEGINNER: 1, INTERMEDIATE: 2, ADVANCED: 3 };
+      return (levels[a.level] || 2) - (levels[b.level] || 2) || a.position - b.position;
+    });
+    const guidanceMarkup = guidance
+      ? `<section class="glass tip">
+          <h3>AI-generated study suggestions</h3>
+          <p class="muted">These are suggestions, not verified employer requirements. Skills and resource links above come from PlaceX records.</p>
+          <b>Suggested learning sequence</b>
+          <p>${(guidance.sequence || []).map(skill => PX.esc(skill)).join(" → ")}</p>
+          ${(guidance.explanations || []).map(item => `<p><b>${PX.esc(item.skill)}:</b> ${PX.esc(item.reason)}</p>`).join("")}
+          <b>Sample weekly schedule</b>
+          <ol>${(guidance.weekly_schedule || []).map(day => `<li>Day ${PX.esc(day.day)}: ${(day.blocks || []).map(block => `${PX.esc(block.skill)} (${PX.esc(block.hours)} h)`).join(", ") || "Rest or review"}</li>`).join("")}</ol>
+        </section>`
+      : roadmap.ai_notice ? `<div class="alert">${PX.esc(roadmap.ai_notice)}</div>` : "";
+    const researchMarkup = `<section class="glass tip">
+      <h3>External learning research · ${PX.esc(externalResearch.status || "not available")}</h3>
+      <p class="muted">${PX.esc(externalResearch.notice || "No external search result was supplied.")}</p>
+      ${(externalResearch.sources || []).filter(source => safeLink(source.url)).map(source => `<p>
+        <a href="${PX.esc(safeLink(source.url))}" target="_blank" rel="noopener noreferrer">${PX.esc(source.title || source.source_domain || "Research source")}</a>
+        · ${PX.esc(source.source_classification || "secondary source")}
+        · Retrieved ${PX.esc(formatDate(source.retrieved_at))}
+        ${source.snippet ? `<br>${PX.esc(source.snippet)}` : ""}
+      </p>`).join("")}
+    </section>`;
 
     if (!items.length) {
       result.innerHTML = `<section class="glass roadmap-head">
         <p class="muted">${PX.esc(roadmap.company_name || "Company not identified")} · ${PX.esc(roadmap.role_title || "Role unavailable")}</p>
         <h2>${PX.esc(roadmap.title)}</h2>
-        <p>This saved roadmap has no study tasks. There may have been no missing target skills in the analysis that created it.</p>
+        <p>${fromJourneyGuide
+          ? "This guide did not include trackable preparation tasks."
+          : "There may have been no missing target skills in the analysis that created this roadmap."}</p>
         ${matchedSkills.length ? `<p><strong>Matched skills:</strong> ${PX.esc(matchedSkills.map(item => item.skill).join(", "))}</p>` : ""}
+        ${guidanceMarkup}
+        ${researchMarkup}
         <button class="btn ghost sm" type="button" data-create-plan>Compare another target</button>
       </section>`;
       result.querySelector("[data-create-plan]").addEventListener("click", () => $("newPlan").click());
@@ -150,8 +193,8 @@
       return;
     }
 
-    const resourceMarkup = resource => resource && /^https?:\/\//i.test(resource.url || "")
-      ? `<a href="${PX.esc(resource.url)}" target="_blank" rel="noopener noreferrer">${PX.esc(resource.title)}${resource.kind ? ` · ${PX.esc(resource.kind)}` : ""}</a>`
+    const resourceMarkup = resource => resource && safeLink(resource.url)
+      ? `<a href="${PX.esc(safeLink(resource.url))}" target="_blank" rel="noopener noreferrer">${PX.esc(resource.title)}${resource.kind ? ` · ${PX.esc(resource.kind)}` : ""}</a>`
       : `<span class="muted">No learning resource is stored for this skill.</span>`;
     result.innerHTML = `<section class="glass roadmap-head">
         <p class="muted">${PX.esc(roadmap.company_name || "Company unavailable")} · ${PX.esc(roadmap.role_title || "Role unavailable")}</p>
@@ -167,12 +210,22 @@
           <i style="width:${percent}%"></i>
         </div>
         ${workload(roadmap, remainingHours)}
+        <section class="learning-sequence">
+          <h3>Learning sequence</h3>
+          <p>${learningSequence.map(item => `${PX.esc(item.level || "INTERMEDIATE")}: ${PX.esc(item.title || item.skill || "Preparation task")}`).join(" → ")}</p>
+        </section>
+        ${guidanceMarkup}
+        ${researchMarkup}
         ${matchedSkills.length ? `<div class="matched-skills"><strong>Skills already matched</strong><p>${matchedSkills.map(item => PX.esc(item.skill)).join(", ")}</p></div>` : ""}
-        <small class="muted">Hours are estimates from the stored skill catalog. Priority and requirement labels come from the selected job description.</small>
+        <small class="muted">${fromJourneyGuide
+          ? "Tasks, estimates, and milestones are AI-generated preparation suggestions from your saved Journey Guide."
+          : "Hours are estimates from the stored skill catalog. Priority and requirement labels come from the selected job description."}</small>
       </section>
       <div class="road">${items.map(item => {
         const importance = item.importance == null ? "" : ` · importance ${PX.esc(item.importance)}/5`;
-        const relevance = item.required === true
+        const relevance = fromJourneyGuide
+          ? "AI-generated preparation task from your saved Journey Guide."
+          : item.required === true
           ? `Required by this job description${importance}.`
           : item.required === false
             ? `Preferred skill in this job description${importance}.`
@@ -180,9 +233,11 @@
         return `<article class="glass hover rm">
           <span class="no">${String(item.position).padStart(2, "0")}</span>
           <div class="road-item-main">
-            <b>${PX.esc(item.skill)}</b>
+            <b>${PX.esc(item.title || item.skill || "Preparation task")}</b>
+            ${item.milestone ? `<small><strong>Milestone:</strong> ${PX.esc(item.milestone)}</small>` : ""}
+            ${item.practice_task ? `<small><strong>Practice:</strong> ${PX.esc(item.practice_task)}</small>` : ""}
             <small>${PX.esc(relevance)}</small>
-            <small>${resourceMarkup(item.resource)}</small>
+            ${item.resource ? `<small>${resourceMarkup(item.resource)}</small>` : ""}
           </div>
           <div class="hrs">~${PX.esc(item.est_hours)}<small> estimated hours</small></div>
           <label class="item-status"><span class="sr-only">Status for ${PX.esc(item.skill)}</span>
@@ -201,6 +256,10 @@
   async function loadRoadmaps({ showSelected = true } = {}) {
     roadmaps = await API.roadmaps(userId);
     renderSavedRoadmaps();
+    const requestedRoadmapId = Number(new URLSearchParams(location.search).get("roadmap_id"));
+    if (requestedRoadmapId && roadmaps.some(item => item.id === requestedRoadmapId)) {
+      selectedRoadmapId = requestedRoadmapId;
+    }
     if (!roadmaps.length) {
       selectedRoadmapId = null;
       if (showSelected) emptyResult(
@@ -278,7 +337,7 @@
       if (problem) throw new Error(problem);
       message("Uploading your resume…");
       const uploaded = await API.uploadResume(userId, file);
-      if (!uploaded.raw_text || !uploaded.raw_text.trim()) {
+      if (!uploaded.has_text) {
         throw new Error("The file was uploaded, but PlaceX could not extract text. Try a text-based PDF, DOCX, TXT, or MD file, or use Resume Analyzer.");
       }
       await loadResumes(uploaded.id);
@@ -341,6 +400,7 @@
       progress.label("Building your prioritized skill-gap plan");
       const job = await API.runJob(userId, "PREP_PLAN", {
         report_id: Number(report.id),
+        regenerate: $("regeneratePlan").checked,
         ...preferences,
       }, progress.tick, 5);
       progress.done();
@@ -364,9 +424,8 @@
       }
     } catch (error) {
       progress.done();
-      const safeMessage = error.kind === "job"
-        ? "Plan generation failed. Check that your resume has readable text and the selected job description contains recognizable skills, then try again."
-        : error.message || "Could not generate your plan. Check your connection and try again.";
+      const safeMessage = error.message
+        || "Could not generate your plan. Check your connection and try again.";
       message(safeMessage, "error");
     } finally {
       progress.done();
@@ -383,9 +442,13 @@
     const select = $("jdSelect");
     select.innerHTML = jobDescriptions.length
       ? `<option value="">Choose a target role</option>` + jobDescriptions.map(item =>
-          `<option value="${PX.esc(item.id)}">${PX.esc(item.company_name || "Company not identified")} · ${PX.esc(item.role_title)}</option>`
+          `<option value="${PX.esc(item.id)}">${PX.esc(item.company_name || "Company not identified")} · ${PX.esc(item.role_title)} · ${PX.esc((item.data_classification || "unverified").replaceAll("_", " "))}</option>`
         ).join("")
       : `<option value="">No saved job descriptions</option>`;
+    const selectedJd = Number(new URLSearchParams(location.search).get("jd_id"));
+    if (selectedJd && jobDescriptions.some(item => item.id === selectedJd)) {
+      select.value = String(selectedJd);
+    }
     $("jdEmpty").hidden = jobDescriptions.length > 0;
     if (!jobDescriptions.length) {
       document.querySelector('input[name="targetMethod"][value="paste"]').checked = true;
@@ -416,7 +479,7 @@
       );
       $("result").querySelector("[data-create-plan]").addEventListener("click", () => $("newPlan").click());
     } else {
-      showRoadmap(roadmaps[0]);
+      showRoadmap(roadmaps.find(item => item.id === selectedRoadmapId) || roadmaps[0]);
     }
   } catch (error) {
     message(error.message || "Could not load your saved plans or selections. Refresh the page or check your connection.", "error");

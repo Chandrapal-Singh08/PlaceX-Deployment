@@ -1,0 +1,2 @@
+# Optional dependency for lazy semantic matching; not needed for core ATS use.
+sentence-transformers>=3.0

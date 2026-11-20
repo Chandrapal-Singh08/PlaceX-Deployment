@@ -6,6 +6,7 @@ from placex.os_layer import monitor
 from placex.os_layer.monitor import ResourceMonitor
 from placex.os_layer.policies import FCFS
 from placex.os_layer.queue import BoundedJobQueue, QueuedJob
+from placex.os_layer.worker import WorkerPool
 
 # ----------------------------------------------------------- file system
 def test_filestore_rules(tmp_path):
@@ -82,3 +83,33 @@ def test_monitor_resumes_when_macos_pressure_is_below_low_watermark(cfg):
     assert sample["mem"] == 69
     assert not q.paused
     assert not m.throttled
+
+
+def test_worker_requeues_job_after_temporary_database_claim_failure(cfg):
+    cfg.workers = 1
+    cfg.retry_backoff_s = 0.01
+    queue = BoundedJobQueue(2, FCFS())
+
+    class Repository:
+        def __init__(self):
+            self.claims = 0
+            self.finished = threading.Event()
+
+        def claim_job(self, job_id, worker):
+            self.claims += 1
+            if self.claims == 1:
+                raise RuntimeError("temporary database failure")
+            return {"id": job_id, "job_type": "PREP_PLAN", "payload": {}}
+
+        def finish_job(self, job_id, result):
+            self.finished.set()
+
+    repo = Repository()
+    pool = WorkerPool(cfg, queue, repo, {"PREP_PLAN": lambda job, ctx: {}})
+    queue.put(QueuedJob(1, 5, "PREP_PLAN"))
+    pool.start()
+    try:
+        assert repo.finished.wait(2)
+        assert repo.claims >= 2
+    finally:
+        pool.stop()

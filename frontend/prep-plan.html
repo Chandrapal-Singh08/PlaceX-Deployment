@@ -4,7 +4,7 @@
 <body data-page="prep" data-auth="required">
 <div class="app"><aside id="sidebar"></aside>
 <main class="content">
-<div class="page-head"><h1>Your Preparation Plan</h1><p>Turn your resume's real skill gaps into a prioritized study plan with estimated hours, learning resources, and progress tracking.</p></div>
+<div class="page-head"><h1>Your Preparation Plan</h1><p>Turn resume skill gaps or a saved Journey Guide into a prioritized, trackable study plan.</p></div>
 
 <section class="glass saved-section" aria-labelledby="savedTitle">
 	<div class="section-title"><h2 id="savedTitle">Your Saved Plans</h2><button class="btn ghost sm" id="newPlan" type="button">Create a new plan</button></div>
@@ -13,7 +13,7 @@
 
 <section class="glass create-section" id="createPlan" aria-labelledby="createTitle">
 	<h2 id="createTitle">Create Your Preparation Plan</h2>
-	<p class="muted">A resume is needed so PlaceX can compare your extracted skills with the selected role. Skill matching is deterministic keyword matching against the stored skill catalog.</p>
+	<p class="muted">For a skill-gap plan, choose a resume and target job description; matching uses the stored skill catalog. You can also create a trackable plan directly from a saved Journey Guide without a resume.</p>
 
 	<fieldset class="target-method">
 		<legend>Choose a target</legend>
@@ -79,6 +79,10 @@
 		<small class="muted">Workload estimates use your daily study time and selected deadline; they are planning estimates, not guarantees.</small>
 	</details>
 
+	<label class="inline-choice" for="regeneratePlan">
+		<input id="regeneratePlan" type="checkbox">
+		<span>Create a fresh roadmap version and keep existing plans and progress</span>
+	</label>
 	<p id="formMessage" class="form-message" role="status" aria-live="polite" hidden></p>
 	<button class="btn" id="generatePlan" type="button">Generate preparation plan</button>
 </section>
@@ -86,5 +90,5 @@
 <div id="progress" hidden></div>
 <section id="result" aria-live="polite" hidden></section>
 </main></div>
-<script src="js/config.js"></script><script src="js/api.js?v=6"></script><script src="js/core.js"></script><script src="js/prep.js?v=3"></script>
+<script src="js/config.js"></script><script src="js/api.js?v=6"></script><script src="js/core.js"></script><script src="js/prep.js?v=4"></script>
 </body></html>

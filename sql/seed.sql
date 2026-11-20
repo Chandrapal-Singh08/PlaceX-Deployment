@@ -25,15 +25,16 @@ INSERT INTO skills (name, category, aliases, est_hours) VALUES
  ('Problem Solving','soft','{"problem-solving"}',20), ('Communication','soft','{"communication skills"}',6),
  ('Agile','tool','{scrum}',4), ('CI/CD','tool','{cicd,"github actions",jenkins}',8);
 
-INSERT INTO companies (name, industry) VALUES
- ('Acme Technologies (sample)','Product'),
- ('Globex Systems (sample)','Services'),
- ('Initech Software (sample)','Product');
+INSERT INTO companies (name, industry, data_classification) VALUES
+ ('Acme Technologies (sample)','Product','sample'),
+ ('Globex Systems (sample)','Services','sample'),
+ ('Initech Software (sample)','Product','sample');
 
-INSERT INTO job_descriptions (company_id, role_title, description, location) VALUES
- (1,'Backend Developer Intern','Build REST services in Python with SQL databases. Git, Docker and Linux are a plus.','Remote'),
- (2,'Software Engineer','Strong Java, data structures and algorithms. OOP, SQL, Spring Boot and operating systems fundamentals.','Hybrid'),
- (3,'Full Stack Developer','JavaScript, React and Node.js with SQL, HTML, CSS, TypeScript, Git and REST APIs.','Onsite');
+INSERT INTO job_descriptions
+    (company_id, role_title, description, location, data_classification) VALUES
+ (1,'Backend Developer Intern','Build REST services in Python with SQL databases. Git, Docker and Linux are a plus.','Remote','sample'),
+ (2,'Software Engineer','Strong Java, data structures and algorithms. OOP, SQL, Spring Boot and operating systems fundamentals.','Hybrid','sample'),
+ (3,'Full Stack Developer','JavaScript, React and Node.js with SQL, HTML, CSS, TypeScript, Git and REST APIs.','Onsite','sample');
 
 INSERT INTO jd_skills (jd_id, skill_id, importance, required)
 SELECT j.id, s.id, v.imp, v.req FROM (VALUES
@@ -46,17 +47,18 @@ SELECT j.id, s.id, v.imp, v.req FROM (VALUES
 ) AS v(jd, skill, imp, req)
 JOIN job_descriptions j ON j.id = v.jd JOIN skills s ON s.name = v.skill;
 
-INSERT INTO hiring_rounds (company_id, round_no, name, round_type, description, duration_min, tips) VALUES
- (1,1,'Online Assessment','online_test','Aptitude plus basic coding questions.',90,'Practice timed problems; read constraints carefully.'),
- (1,2,'Technical Interview','technical','Projects, Python, SQL and data structures.',45,'Be ready to explain every project line on your resume.'),
- (1,3,'HR Interview','hr','Motivation, teamwork and expectations.',30,'Prepare 3 stories using situation-action-result.'),
- (2,1,'Online Coding Test','coding','Two DSA problems and MCQs on CS fundamentals.',100,'Revise arrays, strings, trees, and OS/DBMS basics.'),
- (2,2,'Technical Interview 1','technical','Java, OOP and problem solving on a whiteboard.',45,'Talk through your approach before coding.'),
- (2,3,'Technical Interview 2','system_design','Low level design and project deep-dive.',45,'Know the trade-offs behind your project choices.'),
- (2,4,'HR Interview','hr','Culture fit and offer discussion.',30,'Research the company and ask good questions.'),
- (3,1,'Take-home Assignment','coding','Small full stack feature with tests.',240,'Clean commits and a clear README matter.'),
- (3,2,'Code Review Interview','technical','Walk through your assignment and extend it live.',60,'Be ready to defend design decisions.'),
- (3,3,'HR Interview','hr','Team fit and expectations.',30,'Be honest about what you do not know yet.');
+INSERT INTO hiring_rounds
+    (company_id, round_no, name, round_type, description, duration_min, tips, data_classification) VALUES
+ (1,1,'Online Assessment','online_test','Aptitude plus basic coding questions.',90,'Practice timed problems; read constraints carefully.','sample'),
+ (1,2,'Technical Interview','technical','Projects, Python, SQL and data structures.',45,'Be ready to explain every project line on your resume.','sample'),
+ (1,3,'HR Interview','hr','Motivation, teamwork and expectations.',30,'Prepare 3 stories using situation-action-result.','sample'),
+ (2,1,'Online Coding Test','coding','Two DSA problems and MCQs on CS fundamentals.',100,'Revise arrays, strings, trees, and OS/DBMS basics.','sample'),
+ (2,2,'Technical Interview 1','technical','Java, OOP and problem solving on a whiteboard.',45,'Talk through your approach before coding.','sample'),
+ (2,3,'Technical Interview 2','system_design','Low level design and project deep-dive.',45,'Know the trade-offs behind your project choices.','sample'),
+ (2,4,'HR Interview','hr','Culture fit and offer discussion.',30,'Research the company and ask good questions.','sample'),
+ (3,1,'Take-home Assignment','coding','Small full stack feature with tests.',240,'Clean commits and a clear README matter.','sample'),
+ (3,2,'Code Review Interview','technical','Walk through your assignment and extend it live.',60,'Be ready to defend design decisions.','sample'),
+ (3,3,'HR Interview','hr','Team fit and expectations.',30,'Be honest about what you do not know yet.','sample');
 
 INSERT INTO resources (skill_id, title, url, kind, difficulty)
 SELECT s.id, v.title, v.url, v.kind, v.diff FROM (VALUES

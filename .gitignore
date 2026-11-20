@@ -8,3 +8,9 @@ __pycache__/
 !.env.example
 uploads/*
 !uploads/.gitkeep
+
+# Local database backups
+backups/*.dump
+
+# Separate project repository
+snapclass/

@@ -36,7 +36,9 @@ CREATE TABLE companies (
     id        BIGSERIAL PRIMARY KEY,
     name      TEXT NOT NULL UNIQUE,
     industry  TEXT,
-    website   TEXT
+    website   TEXT,
+    data_classification TEXT NOT NULL DEFAULT 'unverified'
+        CHECK (data_classification IN ('sample','user_provided','source_reported','unverified'))
 );
 
 CREATE TABLE job_descriptions (
@@ -45,6 +47,11 @@ CREATE TABLE job_descriptions (
     role_title   TEXT   NOT NULL,
     description  TEXT   NOT NULL,
     location     TEXT,
+    data_classification TEXT NOT NULL DEFAULT 'user_provided'
+        CHECK (data_classification IN ('sample','user_provided','source_reported','unverified')),
+    source_url   TEXT,
+    retrieved_at TIMESTAMPTZ,
+    last_verified_at TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (company_id, role_title)
 );
@@ -120,7 +127,97 @@ CREATE TABLE analysis_reports (
     job_id       BIGINT REFERENCES jobs(id) ON DELETE SET NULL,
     ats_score    NUMERIC(5,2) NOT NULL CHECK (ats_score BETWEEN 0 AND 100),
     suggestions  JSONB NOT NULL DEFAULT '[]',
+    matching_details JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ----------------------------------------------------------- job discovery
+CREATE TABLE external_jobs (
+    id                       BIGSERIAL PRIMARY KEY,
+    source_name              TEXT NOT NULL,
+    external_id              TEXT NOT NULL,
+    source_url               TEXT NOT NULL CHECK (source_url ~ '^https?://'),
+    company_name             TEXT NOT NULL,
+    role_title               TEXT NOT NULL,
+    description              TEXT NOT NULL,
+    location                 TEXT,
+    is_remote                BOOLEAN NOT NULL DEFAULT FALSE,
+    employment_type          TEXT,
+    experience_level         TEXT,
+    experience_requirements  TEXT,
+    education_requirements   TEXT,
+    skills                   JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(skills) = 'array'),
+    status                   TEXT NOT NULL DEFAULT 'ACTIVE'
+        CHECK (status IN ('ACTIVE','EXPIRED','UNAVAILABLE')),
+    is_verified              BOOLEAN NOT NULL DEFAULT FALSE,
+    retrieved_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_verified_at         TIMESTAMPTZ,
+    expires_at               TIMESTAMPTZ,
+    jd_id                    BIGINT REFERENCES job_descriptions(id) ON DELETE SET NULL,
+    raw_data                 JSONB NOT NULL DEFAULT '{}'::jsonb
+        CHECK (jsonb_typeof(raw_data) = 'object'),
+    UNIQUE (source_name, source_url),
+    UNIQUE (source_name, external_id)
+);
+
+CREATE TABLE user_job_preferences (
+    user_id              BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    preferred_roles      TEXT[] NOT NULL DEFAULT '{}',
+    preferred_locations  TEXT[] NOT NULL DEFAULT '{}',
+    remote_preference    TEXT NOT NULL DEFAULT 'ANY'
+        CHECK (remote_preference IN ('ANY','REMOTE','ONSITE')),
+    employment_types     TEXT[] NOT NULL DEFAULT '{}',
+    experience_level     TEXT,
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE job_recommendations (
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    resume_id       BIGINT NOT NULL REFERENCES resumes(id) ON DELETE CASCADE,
+    external_job_id BIGINT NOT NULL REFERENCES external_jobs(id) ON DELETE CASCADE,
+    match_score     NUMERIC(5,2) NOT NULL CHECK (match_score BETWEEN 0 AND 100),
+    category        TEXT NOT NULL CHECK (category IN
+                      ('STRONG_MATCH','ACHIEVABLE_MATCH','SKILL_BUILDING')),
+    reasons         JSONB NOT NULL DEFAULT '[]'::jsonb
+                      CHECK (jsonb_typeof(reasons) = 'array'),
+    matching_details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    dismissed       BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, resume_id, external_job_id)
+);
+
+CREATE TABLE applications (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    external_job_id   BIGINT REFERENCES external_jobs(id) ON DELETE RESTRICT,
+    jd_id             BIGINT REFERENCES job_descriptions(id) ON DELETE RESTRICT,
+    status            TEXT NOT NULL DEFAULT 'SAVED'
+        CHECK (status IN ('SAVED','APPLIED','ONLINE_ASSESSMENT','TECHNICAL_INTERVIEW',
+                          'HR_INTERVIEW','REJECTED','OFFER_RECEIVED')),
+    applied_at        TIMESTAMPTZ,
+    next_action_at    TIMESTAMPTZ,
+    notes             TEXT NOT NULL DEFAULT '',
+    related_resume_id BIGINT REFERENCES resumes(id) ON DELETE SET NULL,
+    interview_details JSONB NOT NULL DEFAULT '[]'::jsonb
+        CHECK (jsonb_typeof(interview_details) = 'array'),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((external_job_id IS NOT NULL)::integer + (jd_id IS NOT NULL)::integer = 1)
+);
+
+CREATE TABLE application_events (
+    id              BIGSERIAL PRIMARY KEY,
+    application_id  BIGINT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    user_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_type      TEXT NOT NULL,
+    from_status     TEXT,
+    to_status       TEXT,
+    notes           TEXT NOT NULL DEFAULT '',
+    details         JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- --------------------------------------------------------------- guidance
@@ -134,8 +231,36 @@ CREATE TABLE hiring_rounds (
     description   TEXT,
     duration_min  SMALLINT CHECK (duration_min > 0),
     tips          TEXT,
+    data_classification TEXT NOT NULL DEFAULT 'unverified'
+        CHECK (data_classification IN ('sample','user_provided','source_reported','unverified')),
     UNIQUE (company_id, round_no)
 );
+
+CREATE TABLE journey_guides (
+    id                BIGSERIAL PRIMARY KEY,
+    user_id           BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company_name      TEXT NOT NULL,
+    job_role          TEXT NOT NULL,
+    location          TEXT,
+    experience_level  TEXT,
+    employment_type   TEXT,
+    guidance          JSONB NOT NULL CHECK (jsonb_typeof(guidance) = 'object'),
+    retrieved_context JSONB NOT NULL DEFAULT '{}'::jsonb
+                      CHECK (jsonb_typeof(retrieved_context) = 'object'),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE research_cache (
+    query_hash   CHAR(64) PRIMARY KEY,
+    provider_name TEXT NOT NULL,
+    query_text    TEXT NOT NULL,
+    results       JSONB NOT NULL DEFAULT '[]'::jsonb
+                  CHECK (jsonb_typeof(results) = 'array'),
+    retrieved_at  TIMESTAMPTZ NOT NULL,
+    expires_at    TIMESTAMPTZ NOT NULL,
+    CHECK (expires_at >= retrieved_at)
+);
+CREATE INDEX idx_research_cache_expiry ON research_cache (expires_at);
 
 CREATE TABLE resources (
     id          BIGSERIAL PRIMARY KEY,
@@ -150,21 +275,37 @@ CREATE TABLE resources (
 CREATE TABLE roadmaps (
     id          BIGSERIAL PRIMARY KEY,
     user_id     BIGINT NOT NULL REFERENCES users(id)            ON DELETE CASCADE,
-    jd_id       BIGINT NOT NULL REFERENCES job_descriptions(id) ON DELETE CASCADE,
+    jd_id       BIGINT REFERENCES job_descriptions(id) ON DELETE CASCADE,
     report_id   BIGINT REFERENCES analysis_reports(id)          ON DELETE SET NULL,
+    source_guide_id BIGINT UNIQUE REFERENCES journey_guides(id),
+    company_name TEXT,
+    role_title  TEXT,
+    daily_study_hours SMALLINT CHECK (daily_study_hours BETWEEN 1 AND 8),
+    deadline_days SMALLINT CHECK (deadline_days > 0),
+    deadline_date DATE,
     title       TEXT   NOT NULL,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK ((jd_id IS NOT NULL AND source_guide_id IS NULL)
+        OR (jd_id IS NULL AND source_guide_id IS NOT NULL))
 );
 
 CREATE TABLE roadmap_items (
     id            BIGSERIAL PRIMARY KEY,
     roadmap_id    BIGINT   NOT NULL REFERENCES roadmaps(id) ON DELETE CASCADE,
-    skill_id      BIGINT   NOT NULL REFERENCES skills(id),
+    skill_id      BIGINT REFERENCES skills(id),
     resource_id   BIGINT   REFERENCES resources(id) ON DELETE SET NULL,
+    title         TEXT NOT NULL DEFAULT '',
+    resource_title TEXT,
+    resource_url  TEXT,
     position      SMALLINT NOT NULL CHECK (position > 0),
     est_hours     NUMERIC(5,1) NOT NULL CHECK (est_hours > 0),
     status        item_status NOT NULL DEFAULT 'TODO',
     completed_at  TIMESTAMPTZ,
+    level         TEXT NOT NULL DEFAULT 'INTERMEDIATE'
+        CHECK (level IN ('BEGINNER','INTERMEDIATE','ADVANCED')),
+    practice_task TEXT NOT NULL DEFAULT '',
+    milestone     TEXT NOT NULL DEFAULT '',
+    CHECK (skill_id IS NOT NULL OR length(trim(title)) > 0),
     UNIQUE (roadmap_id, position),
     UNIQUE (roadmap_id, skill_id)
 );
@@ -190,6 +331,22 @@ CREATE INDEX idx_jd_company     ON job_descriptions (company_id);
 CREATE INDEX idx_reports_user   ON analysis_reports (user_id, created_at DESC);
 CREATE INDEX idx_logs_user      ON activity_logs (user_id, created_at DESC);
 CREATE INDEX idx_roadmaps_user  ON roadmaps (user_id);
+CREATE INDEX idx_external_jobs_status_verified
+    ON external_jobs (status, is_verified, last_verified_at DESC);
+CREATE INDEX idx_external_jobs_search
+    ON external_jobs (lower(role_title), lower(location));
+CREATE INDEX idx_job_recommendations_user
+    ON job_recommendations (user_id, dismissed, match_score DESC);
+CREATE INDEX idx_applications_user_status
+    ON applications (user_id, status, next_action_at);
+CREATE UNIQUE INDEX idx_applications_user_external_job
+    ON applications (user_id, external_job_id) WHERE external_job_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_applications_user_jd
+    ON applications (user_id, jd_id) WHERE jd_id IS NOT NULL;
+CREATE INDEX idx_application_events_user
+    ON application_events (user_id, occurred_at DESC);
+CREATE INDEX idx_journey_guides_user
+    ON journey_guides (user_id, created_at DESC);
 
 -- ---------------------------------------------------------------- triggers
 CREATE FUNCTION fn_touch_updated_at() RETURNS trigger AS $$
